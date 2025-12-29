@@ -8,7 +8,11 @@ const CONFIG = {
         READ_BOOK: 'read_book',
         PLASTIC_USED: 'plastic_used',
         PLASTIC_AVOIDED: 'plastic_avoided',
-        WALKS: 'walks'
+        WALKS: 'walks',
+        READ_PAGES: 'read_pages',
+        DUOLINGO: 'duolingo',
+        INBOX_REVIEW: 'inbox_review',
+        COMPLEMENT: 'complement'
     }
 };
 
@@ -35,13 +39,19 @@ class StorageManager {
         const data = this.getData();
         if (!data[dateStr]) {
             // Initialize day if missing
+            const isWeekend = HabitLogic.isWeekend(dateStr);
             return {
+                dayType: isWeekend ? 'play' : 'work', // Default: M-F Work, Sat-Sun Play
                 [CONFIG.HABIT_IDS.NO_MCDONALDS]: false,
                 [CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA]: false,
                 [CONFIG.HABIT_IDS.READ_BOOK]: false,
                 [CONFIG.HABIT_IDS.PLASTIC_USED]: 0,
                 [CONFIG.HABIT_IDS.PLASTIC_AVOIDED]: 0,
-                [CONFIG.HABIT_IDS.WALKS]: 0
+                [CONFIG.HABIT_IDS.WALKS]: 0,
+                [CONFIG.HABIT_IDS.READ_PAGES]: false,
+                [CONFIG.HABIT_IDS.DUOLINGO]: false,
+                [CONFIG.HABIT_IDS.INBOX_REVIEW]: false,
+                [CONFIG.HABIT_IDS.COMPLEMENT]: false
             };
         }
         return data[dateStr];
@@ -52,7 +62,12 @@ class StorageManager {
         const currentDay = this.getDay(dateStr);
         data[dateStr] = { ...currentDay, ...updates };
         this.saveData(data);
+        this.saveData(data);
         return data[dateStr];
+    }
+
+    static clearData() {
+        localStorage.removeItem(CONFIG.STORAGE_KEY);
     }
 }
 
@@ -89,33 +104,41 @@ class HabitLogic {
 
     static calculateDailyScore(dayData, dateStr) {
         const isWeekend = this.isWeekend(dateStr);
-        if (isWeekend) return 5;
-
+        // Ensure dayType exists (for older data)
+        const dayType = dayData.dayType || (isWeekend ? 'play' : 'work');
         let score = 0;
 
-        // 1. McDonalds
+        // 1. Required Habits (5) 
+        if (dayData[CONFIG.HABIT_IDS.READ_PAGES]) score++;
+        if (dayData[CONFIG.HABIT_IDS.DUOLINGO]) score++;
         if (dayData[CONFIG.HABIT_IDS.NO_MCDONALDS]) score++;
-
-        // 2. Social Media
         if (dayData[CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA]) score++;
-
-        // 3. Read Book
-        if (dayData[CONFIG.HABIT_IDS.READ_BOOK]) score++;
-
-        // 4. Plastic (Success if used < 3)
+        // Plastic (Success if used < 3) - Now Required
         if (dayData[CONFIG.HABIT_IDS.PLASTIC_USED] < 3) score++;
 
-        // 5. Walks (Success if walks >= 1)
-        if (dayData[CONFIG.HABIT_IDS.WALKS] >= 1) score++;
+        // 2. Work Habits (2) - Only if Work Day
+        if (dayType === 'work') {
+            if (dayData[CONFIG.HABIT_IDS.INBOX_REVIEW]) score++;
+            if (dayData[CONFIG.HABIT_IDS.COMPLEMENT]) score++;
+        }
 
         return score;
     }
 
-    static getStatusColor(score) {
-        if (score === 5) return 'var(--status-gold)';
-        if (score === 4) return 'var(--status-green)';
-        if (score >= 2) return 'var(--status-yellow)';
-        if (score === 1) return 'var(--status-gray)';
+    static getStatusColor(score, dayType) {
+        const maxScore = dayType === 'work' ? 7 : 5;
+
+        if (score === maxScore) return 'var(--status-gold)';
+
+        // Dynamic thresholds
+        // Green: >= 70% roughly
+        // Yellow: >= 40% roughly
+
+        const pct = score / maxScore;
+
+        if (pct >= 0.7) return 'var(--status-green)';
+        if (pct >= 0.4) return 'var(--status-yellow)';
+        if (pct > 0) return 'var(--status-gray)';
         return 'var(--status-red)';
     }
 }
@@ -152,9 +175,19 @@ class UI {
     attachGlobalListeners() {
         // Delegate events from app container
         this.app.addEventListener('click', (e) => {
-            const action = e.target.dataset.action;
-            const id = e.target.dataset.id;
-            if (!action) return;
+            // 1. Handle Button Defaults (Prevent Form Submit / Reload)
+            const btn = e.target.closest('button');
+            if (btn) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            // 2. Find Action Element (Button or Card)
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl) return;
+
+            const action = actionEl.dataset.action;
+            const id = actionEl.dataset.id;
 
             this.handleAction(action, id);
         });
@@ -165,7 +198,20 @@ class UI {
 
         switch (action) {
             case 'toggle-habit': // Habits 1-3
-                App.Storage.updateDay(this.currentDate, { [id]: !dayData[id] });
+                // Special handling for READ_BOOK to open modal
+                if (id === App.Config.HABIT_IDS.READ_BOOK) {
+                    const currentVal = dayData[id];
+                    if (!currentVal) {
+                        // Open Modal to Add
+                        this.openBookModal();
+                        return;
+                    } else {
+                        // Toggle Off (set to false)
+                        App.Storage.updateDay(this.currentDate, { [id]: false });
+                    }
+                } else {
+                    App.Storage.updateDay(this.currentDate, { [id]: !dayData[id] });
+                }
                 break;
 
             case 'increment-plastic':
@@ -204,6 +250,15 @@ class UI {
                 });
                 break;
 
+            case 'decrement-walk':
+                const currentWalks = dayData[App.Config.HABIT_IDS.WALKS] || 0;
+                if (currentWalks > 0) {
+                    App.Storage.updateDay(this.currentDate, {
+                        [App.Config.HABIT_IDS.WALKS]: currentWalks - 1
+                    });
+                }
+                break;
+
             case 'prev-day':
                 this.changeDay(-1);
                 break;
@@ -215,9 +270,89 @@ class UI {
             case 'switch-view':
                 this.currentView = this.currentView === 'dashboard' ? 'stats' : 'dashboard';
                 break;
+
+            case 'set-day-type':
+                App.Storage.updateDay(this.currentDate, { dayType: id });
+                break;
+
+            case 'clear-data':
+                this.openConfirmModal();
+                return; // Return early
         }
 
-        this.render(); // Re-render whole app on state change (SPA style)
+        this.render();
+    }
+
+    openConfirmModal() {
+        const modal = document.getElementById('confirm-modal');
+        const form = document.getElementById('confirm-form');
+        const cancelBtn = document.getElementById('cancel-confirm-btn');
+
+        if (!modal) return;
+
+        modal.showModal();
+
+        const closeHandler = () => {
+            modal.close();
+            cleanup();
+        };
+
+        const submitHandler = (e) => {
+            e.preventDefault();
+            App.Storage.clearData();
+            window.location.reload();
+            modal.close();
+        };
+
+        const cleanup = () => {
+            cancelBtn.removeEventListener('click', closeHandler);
+            form.removeEventListener('submit', submitHandler);
+        };
+
+        cancelBtn.addEventListener('click', closeHandler);
+        form.addEventListener('submit', submitHandler);
+    }
+
+    openBookModal() {
+        const modal = document.getElementById('book-modal');
+        const form = document.getElementById('book-form');
+        const cancelBtn = document.getElementById('cancel-book-btn');
+
+        if (!modal) return;
+
+        // Reset inputs
+        form.reset();
+
+        // Show Modal
+        modal.showModal();
+
+        // Handlers (oneshot)
+        const closeHandler = () => {
+            modal.close();
+            cleanup();
+        };
+
+        const submitHandler = (e) => {
+            e.preventDefault();
+            const title = document.getElementById('book-title').value;
+            const rating = parseFloat(document.getElementById('book-rating').value);
+
+            if (title && !isNaN(rating)) {
+                App.Storage.updateDay(this.currentDate, {
+                    [App.Config.HABIT_IDS.READ_BOOK]: { title, rating }
+                });
+                this.render(); // Re-render to show checked state
+            }
+            modal.close();
+        };
+
+        const cleanup = () => {
+            cancelBtn.removeEventListener('click', closeHandler);
+            form.removeEventListener('submit', submitHandler);
+        };
+
+        cancelBtn.addEventListener('click', closeHandler);
+        form.addEventListener('submit', submitHandler);
     }
 
     changeDay(offset) {
@@ -259,39 +394,50 @@ class UI {
     renderDashboard() {
         const data = App.Storage.getDay(this.currentDate);
         const isWeekend = App.Logic.isWeekend(this.currentDate);
+        // Default to logic if not set (though getDay ensures it is set)
+        const dayType = data.dayType || (isWeekend ? 'play' : 'work');
+
+        // Check if book is completed (truthy object or true)
+        const bookCompleted = !!data[App.Config.HABIT_IDS.READ_BOOK];
+        const bookDetails = typeof data[App.Config.HABIT_IDS.READ_BOOK] === 'object'
+            ? data[App.Config.HABIT_IDS.READ_BOOK]
+            : null;
 
         return `
             <div class="dashboard ${isWeekend ? 'weekend-mode' : ''}">
-                ${isWeekend ? '<div class="weekend-banner">🎉 Weekend Mode: Auto-Success Active!</div>' : ''}
+                ${this.renderDayTypeToggle(dayType)}
+                ${this.renderDayStatus(data, this.currentDate)}
                 
-                <!-- Habit 1: McDonalds -->
+                <!-- Section 1: Required Every Day -->
+                <div class="section-header">Required Every Day</div>
                 ${this.renderToggleCard(
             App.Config.HABIT_IDS.NO_MCDONALDS,
             "No McDonalds Breakfast",
             "🍔",
             data[App.Config.HABIT_IDS.NO_MCDONALDS],
-            isWeekend
+            false
         )}
-
-                <!-- Habit 2: Social Media -->
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.READ_PAGES,
+            "Read 10+ Pages",
+            "📖",
+            data[App.Config.HABIT_IDS.READ_PAGES],
+            false
+        )}
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.DUOLINGO,
+            "2+ Duolingo Lessons",
+            "🦉",
+            data[App.Config.HABIT_IDS.DUOLINGO],
+            false
+        )}
                 ${this.renderToggleCard(
             App.Config.HABIT_IDS.LOW_SOCIAL_MEDIA,
             "Social Media < 30m",
             "📱",
             data[App.Config.HABIT_IDS.LOW_SOCIAL_MEDIA],
-            isWeekend
+            false
         )}
-
-                <!-- Habit 3: Read Book -->
-                ${this.renderToggleCard(
-            App.Config.HABIT_IDS.READ_BOOK,
-            "Read Book",
-            "📚",
-            data[App.Config.HABIT_IDS.READ_BOOK],
-            isWeekend
-        )}
-
-                <!-- Habit 4: Plastic -->
                 <div class="plastic-group">
                     ${this.renderCounterCard(
             "plastic-card",
@@ -302,117 +448,248 @@ class UI {
             'step="1"',
             "increment-plastic",
             "decrement-plastic",
-            isWeekend || data[App.Config.HABIT_IDS.PLASTIC_USED] < 3
-        )}
-                    
-                    ${this.renderCounterCard(
-            "plastic-avoided-card",
-            "Plastics Avoided",
-            "♻️",
-            data[App.Config.HABIT_IDS.PLASTIC_AVOIDED],
-            'Count: ',
-            'step="1"',
-            "increment-avoided",
-            "decrement-avoided",
-            false
+            data[App.Config.HABIT_IDS.PLASTIC_USED] < 3
         )}
                 </div>
 
-                <!-- Habit 5: Walks -->
-                ${this.renderWalkCard(
-            App.Config.HABIT_IDS.WALKS,
-            "Office Walks",
-            "🚶",
-            data[App.Config.HABIT_IDS.WALKS],
-            isWeekend
+                <!-- Section 2: Work Habits (Conditional) -->
+                ${dayType === 'work' ? `
+                <div class="section-header">Work Habits</div>
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.INBOX_REVIEW,
+            "Inbox Review",
+            "📥",
+            data[App.Config.HABIT_IDS.INBOX_REVIEW],
+            false
+        )}
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.COMPLEMENT,
+            "Complement",
+            "🤝",
+            data[App.Config.HABIT_IDS.COMPLEMENT],
+            false
+        )}
+                ` : ''}
+
+                <!-- Section 3: Tracking Only -->
+                <div class="section-header">Tracking Only</div>
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.READ_BOOK,
+            bookDetails ? `Finished: ${bookDetails.title}` : "Completed Book",
+            "📚",
+            bookCompleted,
+            false
         )}
             </div>
         `;
     }
 
+    renderDayTypeToggle(currentType) {
+        return `
+            <div class="day-type-toggle" style="display:flex; justify-content:center; gap:10px; margin-bottom:10px;">
+                <button 
+                    data-action="set-day-type" 
+                    data-id="work" 
+                    style="${currentType === 'work' ? 'background:var(--accent); color:white;' : 'background:var(--card-bg); color:var(--text-secondary);'} border:none; padding:8px 16px; border-radius:20px; font-weight:bold; transition:all 0.2s;"
+                >💼 Work</button>
+                <button 
+                    data-action="set-day-type" 
+                    data-id="play" 
+                    style="${currentType === 'play' ? 'background:var(--status-green); color:black;' : 'background:var(--card-bg); color:var(--text-secondary);'} border:none; padding:8px 16px; border-radius:20px; font-weight:bold; transition:all 0.2s;"
+                >🎉 Play</button>
+            </div>
+        `;
+    }
+
+    renderDayStatus(data, dateStr) {
+        const score = App.Logic.calculateDailyScore(data, dateStr);
+        const dayType = data.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
+        const maxScore = dayType === 'work' ? 7 : 5;
+        const color = App.Logic.getStatusColor(score, dayType);
+
+        let icon = '🔴';
+        if (score === maxScore) icon = '⭐';
+        else if (score / maxScore >= 0.7) icon = '🟢';
+        else if (score / maxScore >= 0.4) icon = '🟡';
+        else if (score > 0) icon = '🔘';
+
+        return `
+            <div class="day-status" style="background: ${color}; color: ${score === maxScore ? 'black' : 'white'}">
+                <div class="status-icon">${icon}</div>
+                <div class="status-text">Status: ${score}/${maxScore} Habits</div>
+            </div>
+        `;
+    }
+
     renderStats() {
-        const stats = this.calculateYearlyStats();
+        const year = new Date(this.currentDate).getFullYear();
+        const stats = this.calculateYearlyStats(year);
+
+        const avgRating = stats.bookCount > 0
+            ? (stats.totalRating / stats.bookCount).toFixed(1)
+            : "0.0";
+
+        // Generate Rows
+        const bookRows = stats.books.map(b => `
+            <tr>
+                <td>${b.date}</td>
+                <td>${b.title}</td>
+                <td>${b.rating} ⭐</td>
+            </tr>
+        `).join('');
 
         return `
             <div class="stats-view">
+                <div class="stats-header" style="text-align:center; margin-bottom: var(--spacing-md);">
+                    <h2>${year} Statistics</h2>
+                </div>
                 <!-- Yearly Summary -->
                 <div class="stats-summary">
                     <div class="stat-box">
                         <span class="stat-value">${stats.perfectDays}</span>
                         <span class="stat-label">Perfect Days (Gold)</span>
                     </div>
-                    <div class="stat-box">
-                        <span class="stat-value">${stats.plasticAvoided}</span>
-                        <span class="stat-label">Plastic Avoided</span>
-                    </div>
-                    <div class="stat-box">
-                        <span class="stat-value">${stats.totalWalks}</span>
-                        <span class="stat-label">Total Walks</span>
-                    </div>
                 </div>
 
+                <!-- Book Stats -->
+                <details>
+                    <summary>${stats.bookCount} Books Completed (Avg. Rating: ${avgRating})</summary>
+                    <table class="books-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Title</th>
+                                <th>Rating</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${bookRows}
+                        </tbody>
+                    </table>
+                </details>
+
                 <!-- Calendar Grid -->
-                ${this.renderCalendar()}
+                ${this.renderCalendar(year)}
                 
                 <!-- Legend -->
                 <div class="legend">
-                    <div class="legend-item"><span class="dot" style="background:var(--status-gold)"></span> 5/5</div>
-                    <div class="legend-item"><span class="dot" style="background:var(--status-green)"></span> 4/5</div>
-                    <div class="legend-item"><span class="dot" style="background:var(--status-yellow)"></span> 2-3</div>
-                    <div class="legend-item"><span class="dot" style="background:var(--status-gray)"></span> 1</div>
+                    <div class="legend-item"><span class="dot" style="background:var(--status-gold)"></span> 100%</div>
+                    <div class="legend-item"><span class="dot" style="background:var(--status-green)"></span> >70%</div>
+                    <div class="legend-item"><span class="dot" style="background:var(--status-yellow)"></span> >40%</div>
+                    <div class="legend-item"><span class="dot" style="background:var(--status-gray)"></span> >0%</div>
                     <div class="legend-item"><span class="dot" style="background:var(--status-red)"></span> 0</div>
+                </div>
+
+                <div style="text-align:center; margin-top:var(--spacing-lg)">
+                    <button type="button" data-action="clear-data" style="background:var(--status-red); color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold; cursor:pointer;">
+                        Delete All Data
+                    </button>
                 </div>
             </div>
         `;
     }
 
-    calculateYearlyStats() {
-        // In a real app, we might cache this or optimize. For valid localstorage size, iterating all keys is fine.
+    calculateYearlyStats(year) {
         const allData = App.Storage.getData();
         let perfectDays = 0;
-        let plasticAvoided = 0; // Derived from "Avoided" field if we tracked it, or just assume "Used < 3" means avoided? 
-        // User asked: "Give me a counter as well for the number of single use plastics I actively avoided."
-        // Ah, I missed adding a specific "Avoided" counter in the UI! I added "Used". 
-        // I will fix the UI to add the "Avoided" counter in the Dashboard as well.
-        // For now let's read what we have.
-
-        let totalWalks = 0;
+        let books = [];
+        let totalRating = 0;
 
         Object.keys(allData).forEach(dateStr => {
-            if (!dateStr.startsWith('2026')) return; // Filter for 2026 (or just all time)
+            if (!dateStr.startsWith(year)) return;
 
             const dayData = allData[dateStr];
-            const score = App.Logic.calculateDailyScore(dayData, dateStr);
-            if (score === 5) perfectDays++;
 
-            // For now, plastic avoided handles manually? User asked for a counter. 
-            // I'll assume I need to add that input to dashboard.
-            // Using what exists:
-            if (dayData[App.Config.HABIT_IDS.WALKS]) totalWalks += dayData[App.Config.HABIT_IDS.WALKS];
-            if (dayData[App.Config.HABIT_IDS.PLASTIC_AVOIDED]) plasticAvoided += dayData[App.Config.HABIT_IDS.PLASTIC_AVOIDED];
+            // Check if day matches filter criteria (if any) or existing logic
+            // Note: calculateYearlyStats iterates existing keys, so data exists by definition.
+
+            const score = App.Logic.calculateDailyScore(dayData, dateStr);
+            const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
+            const maxScore = dayType === 'work' ? 7 : 5;
+
+            if (score === maxScore) perfectDays++;
+
+            const bookData = dayData[App.Config.HABIT_IDS.READ_BOOK];
+            if (bookData) {
+                // Handle both old boolean true and new object
+                if (typeof bookData === 'object') {
+                    books.push({ date: dateStr, ...bookData });
+                    totalRating += bookData.rating || 0;
+                } else {
+                    books.push({ date: dateStr, title: "Unknown Book", rating: 0 });
+                }
+            }
         });
 
-        return { perfectDays, plasticAvoided, totalWalks };
+        // Sort books by date desc
+        books.sort((a, b) => b.date.localeCompare(a.date));
+
+        return { perfectDays, books, bookCount: books.length, totalRating };
     }
 
-    renderCalendar() {
-        // Render 12 months for 2026
+    renderCalendar(year) {
+        // Render 12 months for year
         const months = [];
         for (let m = 0; m < 12; m++) {
-            months.push(this.renderMonth(m));
+            months.push(this.renderMonth(year, m));
         }
-        return `<div class="calendar-list">${months.join('')}</div>`;
+        return `
+            <div class="calendar-section">
+                <h2 style="text-align:center; margin-bottom:var(--spacing-md)">Year in Review</h2>
+                <div class="calendar-list">${months.join('')}</div>
+            </div>
+        `;
     }
 
-    renderMonth(monthIndex) {
-        const year = 2026;
+    renderMonth(year, monthIndex) {
+        const allData = App.Storage.getData();
         const date = new Date(year, monthIndex, 1);
         const monthName = date.toLocaleString('default', { month: 'long' });
         const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
         const startDay = date.getDay(); // 0-6
 
-        let daysHtml = '';
+        // Calculate Month Stats (Past/Today only)
+        let totalScore = 0;
+        let totalMax = 0;
 
+        // Helper to check future
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const targetD = new Date(dateStr + 'T00:00:00');
+
+            // Logic: Count stats if date is <= today
+            if (targetD <= now) {
+                // Determine if data ACTUALLY exists for this day
+                const hasData = !!allData[dateStr];
+
+                if (hasData) {
+                    const dayData = App.Storage.getDay(dateStr);
+                    const score = App.Logic.calculateDailyScore(dayData, dateStr);
+                    const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
+                    const maxScore = dayType === 'work' ? 7 : 5;
+
+                    totalScore += score;
+                    totalMax += maxScore;
+                } else {
+                    // No data entered -> 0 score, but it IS a day that passed, so it adds to Max
+                    // Default day type logic
+                    const isWeekend = App.Logic.isWeekend(dateStr);
+                    const maxScore = isWeekend ? 5 : 7;
+                    totalMax += maxScore;
+                    // totalScore += 0;
+                }
+            }
+        }
+
+        const pct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
+        // Don't show % for future months (totalMax 0)
+        const headerText = totalMax > 0 ? `${monthName} (${pct}%)` : monthName;
+
+        // Render Grid
+        let daysHtml = '';
         // Empty slots for start
         for (let i = 0; i < startDay; i++) {
             daysHtml += `<div class="day-cell empty"></div>`;
@@ -420,34 +697,20 @@ class UI {
 
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const dayData = App.Storage.getDay(dateStr); // This init empty if not exists, which is fine
-            // We only want to show status if the day is in the past or today, OR if data exists? 
-            // Actually user wants to see success. If future, red? Or empty?
-            // "Consider I did not succeed .. unless I indicate". So default is failure (Red) for past days.
-            // But for future days, maybe neutral.
+            const dayData = App.Storage.getDay(dateStr);
+            const targetD = new Date(dateStr + 'T00:00:00');
+            const isFuture = targetD > now;
 
-            const isFuture = new Date(dateStr) > new Date();
-            let color = 'var(--card-bg)';
-            let content = d;
-
-            if (!isFuture) { // Show status for today and past
+            if (!isFuture) {
                 const score = App.Logic.calculateDailyScore(dayData, dateStr);
-                const statusColor = App.Logic.getStatusColor(score);
-
-                // Indicators: Gold Star, Green Circle, etc.
-                if (score === 5) {
-                    content = '⭐'; // Gold star replaces number or overlay? "Gold star on each day"
-                    // Let's make the background text color or add an icon
-                }
-
-                // We use background color for the circle/cell
-                // But user asked for specific shapes: "Gold star", "Green circle", etc.
-                // We can use CSS classes.
+                const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
+                const maxScore = dayType === 'work' ? 7 : 5;
+                const color = App.Logic.getStatusColor(score, dayType);
 
                 daysHtml += `
                     <div class="day-cell" onclick="ui.navigateTo('${dateStr}')">
-                        <div class="status-indicator" style="background-color: ${statusColor}; color: ${score === 5 ? 'black' : 'white'}">
-                            ${d} ${score === 5 ? '<span class="star">★</span>' : ''}
+                        <div class="status-indicator" style="background-color: ${color}; color: ${score === maxScore ? 'black' : 'white'}">
+                            ${d} ${score === maxScore ? '<span class="star">★</span>' : ''}
                         </div>
                     </div>`;
             } else {
@@ -455,14 +718,15 @@ class UI {
             }
         }
 
+        // Use same details/summary style as books
         return `
-            <div class="month-block">
-                <h3>${monthName}</h3>
-                <div class="month-grid">
+            <details class="month-block">
+                <summary>${headerText}</summary>
+                <div class="month-grid" style="margin-top:var(--spacing-md)">
                     <div class="wday">S</div><div class="wday">M</div><div class="wday">T</div><div class="wday">W</div><div class="wday">T</div><div class="wday">F</div><div class="wday">S</div>
                     ${daysHtml}
                 </div>
-            </div>
+            </details>
         `;
     }
 
@@ -505,20 +769,7 @@ class UI {
         `;
     }
 
-    renderWalkCard(id, title, icon, value, isWeekend) {
-        const isSuccess = isWeekend || value >= 1;
 
-        return `
-            <div class="card habit-walk ${isSuccess ? 'success' : ''}" data-action="increment-walk">
-                 <div class="icon">${icon}</div>
-                 <div class="details">
-                    <h3>${title}</h3>
-                    <p>${value} walks completed</p>
-                 </div>
-                 <div class="action-hint">Tap to Add</div>
-            </div>
-        `;
-    }
 
     formatDate(dateStr) {
         const options = { weekday: 'short', month: 'short', day: 'numeric' };

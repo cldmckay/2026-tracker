@@ -1,16 +1,23 @@
 :root {
-    /* Color Palette */
-    --bg-color: #121212;
-    --card-bg: #1e1e1e;
-    --text-primary: #ffffff;
-    --text-secondary: #aaaaaa;
-    --accent: #3b82f6;
+    /* Color Palette - Light Theme */
+    --bg-color: #ffffff;
+    --card-bg: #f9fafb;
+    /* Very light gray for cards */
+    --text-primary: #111827;
+    /* Near black */
+    --text-secondary: #6b7280;
+    --accent: #2563eb;
+    /* Slightly darker blue for contrast on white */
+    --border-color: #e5e7eb;
 
     /* Success Level Colors */
-    --status-gold: #ffd700;
-    --status-green: #22c55e;
-    --status-yellow: #eab308;
-    --status-gray: #6b7280;
+    --status-gold: #fbbf24;
+    /* Darker yellow/gold for visibility */
+    --status-green: #16a34a;
+    /* Darker green */
+    --status-yellow: #ca8a04;
+    /* Darker yellow/orange */
+    --status-gray: #9ca3af;
     --status-red: #ef4444;
 
     /* Spacing */
@@ -68,7 +75,8 @@ h3 {
     position: sticky;
     top: 0;
     z-index: 100;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 100;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .date-nav {
@@ -78,14 +86,31 @@ h3 {
 }
 
 .nav-btn {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.05);
+    /* Match view-btn */
     color: var(--text-primary);
     font-size: 1.2rem;
-    padding: var(--spacing-xs);
+    padding: 2px 10px;
+    /* Wider hit area */
+    border-radius: 8px;
+    /* Match view-btn */
+    border: none;
+    cursor: pointer;
+    font-weight: 800;
+    /* Bolder arrows */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
 }
 
 .nav-btn:disabled {
     opacity: 0.3;
+    pointer-events: none;
+    background: transparent;
 }
 
 .date-display {
@@ -105,7 +130,7 @@ h3 {
 }
 
 .view-btn {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.05);
     color: var(--text-primary);
     padding: 6px 12px;
     border-radius: 8px;
@@ -146,7 +171,8 @@ h3 {
     align-items: center;
     gap: var(--spacing-md);
     transition: all 0.2s ease;
-    border: 1px solid transparent;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .card:active {
@@ -167,7 +193,7 @@ h3 {
     font-size: 1.5rem;
     width: 40px;
     height: 40px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.05);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -193,11 +219,11 @@ h3 {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    border: 2px solid var(--text-secondary);
+    border: 2px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--bg-color);
+    color: #ffffff;
     font-weight: bold;
     transition: all 0.2s;
 }
@@ -250,7 +276,7 @@ h3 {
     width: 40px;
     height: 40px;
     font-size: 1.5rem;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.05);
     color: var(--text-primary);
     border-radius: 6px;
 }
@@ -305,13 +331,10 @@ h3 {
 
 /* Calendar */
 .month-block {
-    margin-bottom: var(--spacing-lg);
+    margin-bottom: var(--spacing-sm);
 }
 
-.month-block h3 {
-    margin-bottom: var(--spacing-sm);
-    padding-left: var(--spacing-xs);
-}
+/* .month-block h3 removed as we use summary now */
 
 .month-grid {
     display: grid;
@@ -390,4 +413,148 @@ h3 {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
+}
+
+/* Section Headers */
+.section-header {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+    font-weight: 600;
+    padding-left: var(--spacing-xs);
+}
+
+/* Day Status Card */
+.day-status {
+    padding: var(--spacing-md);
+    border-radius: 12px;
+    margin-bottom: var(--spacing-md);
+    text-align: center;
+    font-weight: bold;
+    font-size: 1.2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
+    transition: all 0.3s ease;
+}
+
+.day-status .status-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+.day-status .status-text {
+    font-size: 1rem;
+    opacity: 0.9;
+}
+
+/* --- Modal --- */
+.modal {
+    border: none;
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    background: var(--bg-body);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    color: var(--text-primary);
+    max-width: 400px;
+    width: 90%;
+}
+
+.modal::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.modal h2 {
+    margin-bottom: var(--spacing-md);
+    color: var(--accent);
+}
+
+.form-group {
+    margin-bottom: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-group label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.form-group input {
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-lg);
+}
+
+.modal-actions button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.primary-btn {
+    background: var(--accent);
+    color: white;
+}
+
+#cancel-book-btn {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+/* --- Stats Table --- */
+details {
+    background: var(--card-bg);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin-top: var(--spacing-lg);
+    cursor: pointer;
+}
+
+summary {
+    font-weight: bold;
+    outline: none;
+    color: var(--text-primary);
+}
+
+.books-table {
+    width: 100%;
+    margin-top: var(--spacing-md);
+    border-collapse: collapse;
+}
+
+.books-table th,
+.books-table td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.books-table th {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.books-table td {
+    font-size: 0.95rem;
 }
