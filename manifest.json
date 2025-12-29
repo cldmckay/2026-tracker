@@ -1,10 +1,10 @@
 {
-    "name": "2026 Tracker",
-    "short_name": "2026",
+    "name": "Clinton 2026",
+    "short_name": "Clinton 26",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#121212",
-    "theme_color": "#121212",
+    "background_color": "#ffffff",
+    "theme_color": "#ffffff",
     "icons": [
         {
             "src": "icon-192.png",
