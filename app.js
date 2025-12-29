@@ -121,6 +121,13 @@ class HabitLogic {
 }
 
 
+// Global Export
+window.App = {
+    Storage: StorageManager,
+    Logic: HabitLogic,
+    Config: CONFIG
+};
+
 // --- UI Layout & Rendering ---
 class UI {
     constructor() {
