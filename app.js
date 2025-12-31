@@ -4,17 +4,98 @@ const CONFIG = {
     STORAGE_KEY: 'tracker_2026_data',
     HABIT_IDS: {
         NO_MCDONALDS: 'no_mcdonalds',
+        READ_PAGES: 'read_pages', // Restored
+        DUOLINGO: 'duolingo', // Restored
+        CREATIVITY: 'creativity', // Added
         LOW_SOCIAL_MEDIA: 'low_social_media',
         READ_BOOK: 'read_book',
-        PLASTIC_USED: 'plastic_used',
-        PLASTIC_AVOIDED: 'plastic_avoided',
-        WALKS: 'walks',
-        READ_PAGES: 'read_pages',
-        DUOLINGO: 'duolingo',
         INBOX_REVIEW: 'inbox_review',
-        COMPLEMENT: 'complement'
-    }
+        CALENDAR_REVIEW: 'calendar_review',
+        EXCERCISE_BREAK: 'excercise_break',
+        CONNECT: 'connect', // Added
+        REF_HAPPY: 'ref_happy',
+        REF_HEALTHY: 'ref_healthy',
+        REF_ACCOMPLISHED: 'ref_accomplished',
+        DAILY_REFLECTION: 'daily_reflection'
+    },
+    STORAGE_KEY_CONNECTIONS: 'tracker_2026_connections',
+    INITIAL_CONTACTS: [
+        "Howard, Penny", "Howard, Jim", "Hendricks, Nancy", "Sheehan, Maggie", "Sheehan, Vincent",
+        "Jimenez, Jennifer", "Jimenez, Molly", "Jimenez, Lucy", "Bickley, John", "Bonsib, Sandy",
+        "Grand, Robert", "Grdina, Madeline", "Fox, Lora", "Lewis, Tim", "Moore, Christy",
+        "Ondrik, Christina", "McKee, Alaina", "Cavaness, Brandon", "Paul, Logan", "Hurtubise, Jen",
+        "Chambers, Cam", "Borra, Emily", "Clune, Julie", "Gast, Angie", "Chandran, Allison",
+        "Leftwich, Anne", "Whitesell, John", "Stowers, Annie", "Chaora, Anesu", "McKay, Beth",
+        "McKay, Stan", "Hoffman, Jim", "Snyder, Susan"
+    ]
 };
+
+// --- Business Logic ---
+class HabitLogic {
+    static isWeekend(dateStr) {
+        const date = new Date(dateStr + 'T00:00:00');
+        const day = date.getDay();
+        return day === 0 || day === 6;
+    }
+
+    static checkSuccess(habitId, dayData, dateStr) {
+        const isWeekend = this.isWeekend(dateStr);
+        if (isWeekend) return true;
+
+        switch (habitId) {
+            case CONFIG.HABIT_IDS.NO_MCDONALDS:
+            case CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA:
+            case CONFIG.HABIT_IDS.READ_BOOK:
+                return dayData[habitId] === true;
+            case CONFIG.HABIT_IDS.WALKS:
+                return dayData[CONFIG.HABIT_IDS.WALKS] >= 1;
+            default:
+                return false;
+        }
+    }
+
+    static calculateDailyScore(dayData, dateStr) {
+        const isWeekend = this.isWeekend(dateStr);
+        const dayType = dayData.dayType || (isWeekend ? 'play' : 'work');
+        let score = 0;
+
+        if (dayData[CONFIG.HABIT_IDS.NO_MCDONALDS]) score++;
+        if (dayData[CONFIG.HABIT_IDS.READ_PAGES]) score++;
+        if (dayData[CONFIG.HABIT_IDS.DUOLINGO]) score++;
+        if (dayData[CONFIG.HABIT_IDS.CREATIVITY]) score++;
+        if (dayData[CONFIG.HABIT_IDS.CONNECT]) score++;
+        if (dayData[CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA]) score++;
+
+        if (dayType === 'work') {
+            if (dayData[CONFIG.HABIT_IDS.INBOX_REVIEW]) score++;
+            if (dayData[CONFIG.HABIT_IDS.CALENDAR_REVIEW]) score++;
+            if (dayData[CONFIG.HABIT_IDS.EXCERCISE_BREAK]) score++;
+        }
+
+        // Derived: Daily Reflection Habit
+        const hasReflections = (dayData[CONFIG.HABIT_IDS.REF_HAPPY] && dayData[CONFIG.HABIT_IDS.REF_HAPPY] !== 'na') &&
+            (dayData[CONFIG.HABIT_IDS.REF_HEALTHY] && dayData[CONFIG.HABIT_IDS.REF_HEALTHY] !== 'na') &&
+            (dayData[CONFIG.HABIT_IDS.REF_ACCOMPLISHED] && dayData[CONFIG.HABIT_IDS.REF_ACCOMPLISHED] !== 'na');
+
+        if (hasReflections) score++;
+
+        return score;
+    }
+
+    static getStatusColor(score, dayType) {
+        const isWork = dayType === 'work';
+        const maxScore = isWork ? 10 : 7;
+        if (score === maxScore) return 'var(--status-gold)';
+        if (isWork) {
+            if (score >= 7) return 'var(--status-green)';
+            if (score >= 4) return 'var(--status-yellow)';
+        } else {
+            if (score >= 5) return 'var(--status-green)';
+            if (score >= 3) return 'var(--status-yellow)';
+        }
+        return 'var(--status-red)';
+    }
+}
 
 // --- Data Layer ---
 class StorageManager {
@@ -38,20 +119,22 @@ class StorageManager {
     static getDay(dateStr) {
         const data = this.getData();
         if (!data[dateStr]) {
-            // Initialize day if missing
             const isWeekend = HabitLogic.isWeekend(dateStr);
             return {
-                dayType: isWeekend ? 'play' : 'work', // Default: M-F Work, Sat-Sun Play
+                dayType: isWeekend ? 'play' : 'work',
                 [CONFIG.HABIT_IDS.NO_MCDONALDS]: false,
-                [CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA]: false,
-                [CONFIG.HABIT_IDS.READ_BOOK]: false,
-                [CONFIG.HABIT_IDS.PLASTIC_USED]: 0,
-                [CONFIG.HABIT_IDS.PLASTIC_AVOIDED]: 0,
-                [CONFIG.HABIT_IDS.WALKS]: 0,
                 [CONFIG.HABIT_IDS.READ_PAGES]: false,
                 [CONFIG.HABIT_IDS.DUOLINGO]: false,
+                [CONFIG.HABIT_IDS.CREATIVITY]: false,
+                [CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA]: false,
+                [CONFIG.HABIT_IDS.READ_BOOK]: false,
+                [CONFIG.HABIT_IDS.WALKS]: 0,
                 [CONFIG.HABIT_IDS.INBOX_REVIEW]: false,
-                [CONFIG.HABIT_IDS.COMPLEMENT]: false
+                [CONFIG.HABIT_IDS.CALENDAR_REVIEW]: false,
+                [CONFIG.HABIT_IDS.EXCERCISE_BREAK]: false,
+                [CONFIG.HABIT_IDS.REF_HAPPY]: 'na',
+                [CONFIG.HABIT_IDS.REF_HEALTHY]: 'na',
+                [CONFIG.HABIT_IDS.REF_ACCOMPLISHED]: 'na'
             };
         }
         return data[dateStr];
@@ -62,84 +145,58 @@ class StorageManager {
         const currentDay = this.getDay(dateStr);
         data[dateStr] = { ...currentDay, ...updates };
         this.saveData(data);
-        this.saveData(data);
         return data[dateStr];
     }
 
     static clearData() {
         localStorage.removeItem(CONFIG.STORAGE_KEY);
-    }
-}
-
-// --- Business Logic ---
-class HabitLogic {
-    static isWeekend(dateStr) {
-        // dateStr format: YYYY-MM-DD
-        // Create date object using local time (append T00:00:00 to ensure local parsing)
-        const date = new Date(dateStr + 'T00:00:00');
-        const day = date.getDay();
-        return day === 0 || day === 6; // 0 = Sun, 6 = Sat
+        localStorage.removeItem(CONFIG.STORAGE_KEY_CONNECTIONS);
     }
 
-    static checkSuccess(habitId, dayData, dateStr) {
-        const isWeekend = this.isWeekend(dateStr);
-        if (isWeekend) return true;
+    static getConnections() {
+        let contacts = [];
+        try {
+            const raw = localStorage.getItem(CONFIG.STORAGE_KEY_CONNECTIONS);
+            if (raw) contacts = JSON.parse(raw);
+        } catch (e) { console.error(e); }
 
-        switch (habitId) {
-            case CONFIG.HABIT_IDS.NO_MCDONALDS:
-            case CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA:
-            case CONFIG.HABIT_IDS.READ_BOOK:
-                return dayData[habitId] === true;
-
-            case 'plastic_habit': // Special case handling in calculateScore
-                return dayData[CONFIG.HABIT_IDS.PLASTIC_USED] < 3;
-
-            case CONFIG.HABIT_IDS.WALKS:
-                return dayData[CONFIG.HABIT_IDS.WALKS] >= 1;
-
-            default:
-                return false;
+        if (contacts.length === 0) {
+            contacts = CONFIG.INITIAL_CONTACTS.map(name => ({
+                name: name,
+                lastContact: null,
+                history: []
+            }));
+            this.saveConnections(contacts);
         }
+        return contacts;
     }
 
-    static calculateDailyScore(dayData, dateStr) {
-        const isWeekend = this.isWeekend(dateStr);
-        // Ensure dayType exists (for older data)
-        const dayType = dayData.dayType || (isWeekend ? 'play' : 'work');
-        let score = 0;
+    static saveConnections(contacts) {
+        localStorage.setItem(CONFIG.STORAGE_KEY_CONNECTIONS, JSON.stringify(contacts));
+    }
 
-        // 1. Required Habits (5) 
-        if (dayData[CONFIG.HABIT_IDS.READ_PAGES]) score++;
-        if (dayData[CONFIG.HABIT_IDS.DUOLINGO]) score++;
-        if (dayData[CONFIG.HABIT_IDS.NO_MCDONALDS]) score++;
-        if (dayData[CONFIG.HABIT_IDS.LOW_SOCIAL_MEDIA]) score++;
-        // Plastic (Success if used < 3) - Now Required
-        if (dayData[CONFIG.HABIT_IDS.PLASTIC_USED] < 3) score++;
-
-        // 2. Work Habits (2) - Only if Work Day
-        if (dayType === 'work') {
-            if (dayData[CONFIG.HABIT_IDS.INBOX_REVIEW]) score++;
-            if (dayData[CONFIG.HABIT_IDS.COMPLEMENT]) score++;
+    static logConnection(name, dateStr) {
+        const contacts = this.getConnections();
+        let person = contacts.find(c => c.name === name);
+        if (!person) {
+            person = { name: name, lastContact: dateStr, history: [dateStr] };
+            contacts.push(person);
+        } else {
+            person.lastContact = dateStr;
+            if (!person.history.includes(dateStr)) person.history.push(dateStr);
         }
-
-        return score;
+        this.saveConnections(contacts);
     }
 
-    static getStatusColor(score, dayType) {
-        const maxScore = dayType === 'work' ? 7 : 5;
-
-        if (score === maxScore) return 'var(--status-gold)';
-
-        // Dynamic thresholds
-        // Green: >= 70% roughly
-        // Yellow: >= 40% roughly
-
-        const pct = score / maxScore;
-
-        if (pct >= 0.7) return 'var(--status-green)';
-        if (pct >= 0.4) return 'var(--status-yellow)';
-        if (pct > 0) return 'var(--status-gray)';
-        return 'var(--status-red)';
+    static revertConnection(name, dateStr) {
+        const contacts = this.getConnections();
+        let person = contacts.find(c => c.name === name);
+        if (person) {
+            person.history = person.history.filter(d => d !== dateStr);
+            person.history.sort();
+            person.lastContact = person.history.length > 0 ? person.history[person.history.length - 1] : null;
+            this.saveConnections(contacts);
+        }
     }
 }
 
@@ -197,52 +254,34 @@ class UI {
         const dayData = App.Storage.getDay(this.currentDate);
 
         switch (action) {
-            case 'toggle-habit': // Habits 1-3
-                // Special handling for READ_BOOK to open modal
+            case 'toggle-habit':
                 if (id === App.Config.HABIT_IDS.READ_BOOK) {
                     const currentVal = dayData[id];
                     if (!currentVal) {
-                        // Open Modal to Add
                         this.openBookModal();
                         return;
                     } else {
-                        // Toggle Off (set to false)
                         App.Storage.updateDay(this.currentDate, { [id]: false });
                     }
+                } else if (id === App.Config.HABIT_IDS.CONNECT) {
+                    // Always Open Modal (even if already checked, to allow clearing/updating)
+                    this.openConnectModal();
+                    return;
                 } else {
                     App.Storage.updateDay(this.currentDate, { [id]: !dayData[id] });
                 }
                 break;
 
-            case 'increment-plastic':
-                App.Storage.updateDay(this.currentDate, {
-                    [App.Config.HABIT_IDS.PLASTIC_USED]: (dayData[App.Config.HABIT_IDS.PLASTIC_USED] || 0) + 1
-                });
+            case 'cycle-reflection': {
+                const states = ['na', 'pos', 'neu', 'neg'];
+                const currentState = dayData[id] || 'na';
+                const nextIndex = (states.indexOf(currentState) + 1) % states.length;
+                App.Storage.updateDay(this.currentDate, { [id]: states[nextIndex] });
+                this.render();
+            }
                 break;
 
-            case 'decrement-plastic':
-                const currentPlastic = dayData[App.Config.HABIT_IDS.PLASTIC_USED] || 0;
-                if (currentPlastic > 0) {
-                    App.Storage.updateDay(this.currentDate, {
-                        [App.Config.HABIT_IDS.PLASTIC_USED]: currentPlastic - 1
-                    });
-                }
-                break;
 
-            case 'increment-avoided':
-                App.Storage.updateDay(this.currentDate, {
-                    [App.Config.HABIT_IDS.PLASTIC_AVOIDED]: (dayData[App.Config.HABIT_IDS.PLASTIC_AVOIDED] || 0) + 1
-                });
-                break;
-
-            case 'decrement-avoided':
-                const currentAvoided = dayData[App.Config.HABIT_IDS.PLASTIC_AVOIDED] || 0;
-                if (currentAvoided > 0) {
-                    App.Storage.updateDay(this.currentDate, {
-                        [App.Config.HABIT_IDS.PLASTIC_AVOIDED]: currentAvoided - 1
-                    });
-                }
-                break;
 
             case 'increment-walk':
                 App.Storage.updateDay(this.currentDate, {
@@ -355,6 +394,133 @@ class UI {
         form.addEventListener('submit', submitHandler);
     }
 
+    openConnectModal() {
+        const modal = document.getElementById('connect-modal');
+        const form = document.getElementById('connect-form');
+        const input = document.getElementById('connect-name');
+        const select = document.getElementById('connect-select');
+        const suggestionsDiv = document.getElementById('suggestions-list');
+        const cancelBtn = document.getElementById('cancel-connect-btn');
+        const clearBtn = document.getElementById('clear-connect-btn');
+
+        if (!modal) return;
+
+        // 1. Load Data
+        const contacts = App.Storage.getConnections();
+        const today = new Date().setHours(0, 0, 0, 0);
+        const dayData = App.Storage.getDay(this.currentDate);
+        const currentName = typeof dayData[App.Config.HABIT_IDS.CONNECT] === 'string'
+            ? dayData[App.Config.HABIT_IDS.CONNECT]
+            : null;
+
+        // Pre-fill if exists
+        if (currentName) {
+            input.value = currentName;
+            clearBtn.style.display = 'block';
+        } else {
+            input.value = '';
+            clearBtn.style.display = 'none';
+        }
+
+        // 2. Sort for Dropdown (Alphabetical)
+        contacts.sort((a, b) => a.name.localeCompare(b.name));
+
+        // 3. Populate Select
+        select.innerHTML = '<option value="">-- Select Person --</option>';
+        contacts.forEach(c => {
+            let label = c.name;
+            if (c.lastContact) {
+                const diffTime = Math.abs(today - new Date(c.lastContact + 'T00:00:00'));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                label += ` (${diffDays} days ago)`;
+            } else {
+                label += ` (Never)`;
+            }
+            const opt = document.createElement('option');
+            opt.value = c.name;
+            opt.textContent = label;
+            if (c.name === currentName) opt.selected = true; // Select if matches
+            select.appendChild(opt);
+        });
+
+        // 4. Generate Suggestions (Random 5 from bottom 10 least recently contacted)
+        // Sort by lastContact (Nulls first, then oldest dates)
+        const sortedByDate = [...contacts].sort((a, b) => {
+            if (!a.lastContact) return -1;
+            if (!b.lastContact) return 1;
+            return a.lastContact.localeCompare(b.lastContact);
+        });
+
+        const bottom10 = sortedByDate.slice(0, 10);
+        // Shuffle and pick 5
+        const suggestions = bottom10.sort(() => 0.5 - Math.random()).slice(0, 5);
+
+        suggestionsDiv.innerHTML = '';
+        suggestions.forEach(c => {
+            const chip = document.createElement('div');
+            chip.className = 'suggestion-chip';
+            chip.textContent = c.name;
+            chip.onclick = () => {
+                input.value = c.name;
+                select.value = c.name; // Try to sync select
+            };
+            suggestionsDiv.appendChild(chip);
+        });
+
+        // 5. Handlers
+        select.onchange = () => {
+            if (select.value) input.value = select.value;
+        };
+
+        // Reset not needed here as we manually handle values
+        modal.showModal();
+
+        const closeHandler = () => {
+            modal.close();
+            cleanup();
+        };
+
+        const submitHandler = (e) => {
+            e.preventDefault();
+            const name = input.value.trim();
+            if (name) {
+                // Determine if we need to remove OLD connection first (e.g. changing name)
+                if (currentName && currentName !== name) {
+                    App.Storage.revertConnection(currentName, this.currentDate);
+                }
+
+                // Log NEW Connection
+                App.Storage.logConnection(name, this.currentDate);
+                App.Storage.updateDay(this.currentDate, {
+                    [App.Config.HABIT_IDS.CONNECT]: name
+                });
+                this.render();
+            }
+            modal.close();
+        };
+
+        const clearHandler = () => {
+            if (currentName) {
+                App.Storage.revertConnection(currentName, this.currentDate);
+                App.Storage.updateDay(this.currentDate, {
+                    [App.Config.HABIT_IDS.CONNECT]: false
+                });
+                this.render();
+            }
+            modal.close();
+        };
+
+        const cleanup = () => {
+            cancelBtn.removeEventListener('click', closeHandler);
+            form.removeEventListener('submit', submitHandler);
+            clearBtn.removeEventListener('click', clearHandler);
+        };
+
+        cancelBtn.addEventListener('click', closeHandler);
+        form.addEventListener('submit', submitHandler);
+        clearBtn.addEventListener('click', clearHandler);
+    }
+
     changeDay(offset) {
         const date = new Date(this.currentDate);
         date.setDate(date.getDate() + offset);
@@ -363,30 +529,52 @@ class UI {
 
     render() {
         this.app.innerHTML = `
-            ${this.renderHeader()}
+            ${this.renderHeader(this.currentDate)}
             <main class="content">
                 ${this.currentView === 'dashboard' ? this.renderDashboard() : this.renderStats()}
             </main>
         `;
     }
 
-    renderHeader() {
-        const today = this.getToday();
-        const isToday = this.currentDate === today;
+    renderHeader(dateStr) {
+        const isDashboard = this.currentView === 'dashboard';
+
+        // Left Slot content
+        let leftContent = '';
+        if (isDashboard) {
+            // Empty or app logo if desired
+        } else {
+            leftContent = `<button class="view-btn icon-btn" data-action="switch-view" aria-label="Return to Dashboard">⬅</button>`;
+        }
+
+        // Center Slot content
+        let centerContent = '';
+        if (isDashboard) {
+            const prettyDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+                weekday: 'short', month: 'short', day: 'numeric'
+            });
+            centerContent = `
+                <div class="date-nav">
+                    <button class="nav-btn" data-action="prev-day" aria-label="Previous Day">←</button>
+                    <div class="current-date">${prettyDate}</div>
+                    <button class="nav-btn" data-action="next-day" aria-label="Next Day">→</button>
+                </div>
+            `;
+        } else {
+            centerContent = '';
+        }
+
+        // Right Slot content
+        let rightContent = '';
+        if (isDashboard) {
+            rightContent = `<button class="view-btn icon-btn" data-action="switch-view" aria-label="Open Menu">☰</button>`;
+        }
 
         return `
             <header class="app-header">
-                <div class="date-nav">
-                    <button data-action="prev-day" class="nav-btn">&larr;</button>
-                    <span class="date-display">
-                        ${this.formatDate(this.currentDate)}
-                        ${isToday ? '<span class="badge">Today</span>' : ''}
-                    </span>
-                    <button data-action="next-day" class="nav-btn" ${isToday ? 'disabled' : ''}>&rarr;</button>
-                </div>
-                <button data-action="switch-view" class="view-btn">
-                    ${this.currentView === 'dashboard' ? 'Stats' : 'Tracker'}
-                </button>
+                <div class="header-left">${leftContent}</div>
+                <div class="header-center">${centerContent}</div>
+                <div class="header-right">${rightContent}</div>
             </header>
         `;
     }
@@ -408,13 +596,20 @@ class UI {
                 ${this.renderDayTypeToggle(dayType)}
                 ${this.renderDayStatus(data, this.currentDate)}
                 
-                <!-- Section 1: Required Every Day -->
-                <div class="section-header">Required Every Day</div>
+                <!-- Section 1: Personal Habits -->
+                <div class="section-header">Personal Habits</div>
                 ${this.renderToggleCard(
             App.Config.HABIT_IDS.NO_MCDONALDS,
             "No McDonalds Breakfast",
             "🍔",
             data[App.Config.HABIT_IDS.NO_MCDONALDS],
+            false
+        )}
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.LOW_SOCIAL_MEDIA,
+            "Social Media < 30m",
+            "📱",
+            data[App.Config.HABIT_IDS.LOW_SOCIAL_MEDIA],
             false
         )}
                 ${this.renderToggleCard(
@@ -432,25 +627,29 @@ class UI {
             false
         )}
                 ${this.renderToggleCard(
-            App.Config.HABIT_IDS.LOW_SOCIAL_MEDIA,
-            "Social Media < 30m",
-            "📱",
-            data[App.Config.HABIT_IDS.LOW_SOCIAL_MEDIA],
+            App.Config.HABIT_IDS.CREATIVITY,
+            "Creativity",
+            "🏺",
+            data[App.Config.HABIT_IDS.CREATIVITY],
             false
         )}
-                <div class="plastic-group">
-                    ${this.renderCounterCard(
-            "plastic-card",
-            "Plastics Used",
-            "🥤",
-            data[App.Config.HABIT_IDS.PLASTIC_USED],
-            'Count: ',
-            'step="1"',
-            "increment-plastic",
-            "decrement-plastic",
-            data[App.Config.HABIT_IDS.PLASTIC_USED] < 3
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.CONNECT,
+            "Connect",
+            "🤝",
+            data[App.Config.HABIT_IDS.CONNECT],
+            false
         )}
-                </div>
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.DAILY_REFLECTION,
+            "Daily Reflection",
+            "🧘",
+            (data[App.Config.HABIT_IDS.REF_HAPPY] && data[App.Config.HABIT_IDS.REF_HAPPY] !== 'na') &&
+            (data[App.Config.HABIT_IDS.REF_HEALTHY] && data[App.Config.HABIT_IDS.REF_HEALTHY] !== 'na') &&
+            (data[App.Config.HABIT_IDS.REF_ACCOMPLISHED] && data[App.Config.HABIT_IDS.REF_ACCOMPLISHED] !== 'na'),
+            false,
+            true // Read Only
+        )}
 
                 <!-- Section 2: Work Habits (Conditional) -->
                 ${dayType === 'work' ? `
@@ -463,16 +662,33 @@ class UI {
             false
         )}
                 ${this.renderToggleCard(
-            App.Config.HABIT_IDS.COMPLEMENT,
-            "Complement",
-            "🤝",
-            data[App.Config.HABIT_IDS.COMPLEMENT],
+            App.Config.HABIT_IDS.CALENDAR_REVIEW,
+            "Calendar Review",
+            "📅",
+            data[App.Config.HABIT_IDS.CALENDAR_REVIEW],
+            false
+        )}
+                ${this.renderToggleCard(
+            App.Config.HABIT_IDS.EXCERCISE_BREAK,
+            "Exercise / Break",
+            "🧘",
+            data[App.Config.HABIT_IDS.EXCERCISE_BREAK],
             false
         )}
                 ` : ''}
 
-                <!-- Section 3: Tracking Only -->
+                <!-- Section 3: Daily Reflection -->
+                <div class="section-header">Daily Reflection</div>
+                <div class="reflections-grid">
+                    ${this.renderReflectionCard(App.Config.HABIT_IDS.REF_HAPPY, "Happy", "😊", data[App.Config.HABIT_IDS.REF_HAPPY])}
+                    ${this.renderReflectionCard(App.Config.HABIT_IDS.REF_HEALTHY, "Healthy", "🥦", data[App.Config.HABIT_IDS.REF_HEALTHY])}
+                    ${this.renderReflectionCard(App.Config.HABIT_IDS.REF_ACCOMPLISHED, "Accomplished", "🏆", data[App.Config.HABIT_IDS.REF_ACCOMPLISHED])}
+                </div>
+
+                <!-- Section 4: Tracking Only -->
                 <div class="section-header">Tracking Only</div>
+                <div class="habit-group tracking-only">
+
                 ${this.renderToggleCard(
             App.Config.HABIT_IDS.READ_BOOK,
             bookDetails ? `Finished: ${bookDetails.title}` : "Completed Book",
@@ -480,6 +696,33 @@ class UI {
             bookCompleted,
             false
         )}
+            </div>
+        `;
+    }
+
+    renderReflectionCard(id, title, emoji, state) {
+        const stateColors = {
+            'pos': 'var(--status-green)',
+            'neu': 'var(--status-yellow)',
+            'neg': 'var(--status-red)',
+            'na': 'rgba(0, 0, 0, 0.05)'
+        };
+        const stateLabels = {
+            'pos': '(+)',
+            'neu': '(~)',
+            'neg': '(-)',
+            'na': '(No Answer)'
+        };
+        const color = stateColors[state] || 'rgba(0, 0, 0, 0.05)';
+        const labelIndicator = stateLabels[state] || '(No Answer)';
+        const iconColor = state === 'na' ? 'var(--text-primary)' : 'white';
+
+        return `
+            <div class="reflection-card" data-action="cycle-reflection" data-id="${id}" style="border-color: ${color === 'rgba(0, 0, 0, 0.05)' ? 'var(--border-color)' : color}">
+                <div class="reflection-icon" style="background: ${color}; color: ${iconColor}">
+                    ${emoji}
+                </div>
+                <div class="reflection-label">${title} ${labelIndicator}</div>
             </div>
         `;
     }
@@ -497,21 +740,20 @@ class UI {
                     data-id="play" 
                     style="${currentType === 'play' ? 'background:var(--status-green); color:black;' : 'background:var(--card-bg); color:var(--text-secondary);'} border:none; padding:8px 16px; border-radius:20px; font-weight:bold; transition:all 0.2s;"
                 >🎉 Play</button>
-            </div>
-        `;
+            </div >
+    `;
     }
 
     renderDayStatus(data, dateStr) {
         const score = App.Logic.calculateDailyScore(data, dateStr);
         const dayType = data.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
-        const maxScore = dayType === 'work' ? 7 : 5;
+        const maxScore = dayType === 'work' ? 10 : 7;
         const color = App.Logic.getStatusColor(score, dayType);
 
         let icon = '🔴';
-        if (score === maxScore) icon = '⭐';
-        else if (score / maxScore >= 0.7) icon = '🟢';
-        else if (score / maxScore >= 0.4) icon = '🟡';
-        else if (score > 0) icon = '🔘';
+        if (color === 'var(--status-gold)') icon = '⭐';
+        else if (color === 'var(--status-green)') icon = '🟢';
+        else if (color === 'var(--status-yellow)') icon = '�';
 
         return `
             <div class="day-status" style="background: ${color}; color: ${score === maxScore ? 'black' : 'white'}">
@@ -549,6 +791,36 @@ class UI {
                         <span class="stat-value">${stats.perfectDays}</span>
                         <span class="stat-label">Perfect Days (Gold)</span>
                     </div>
+                    <div class="stat-box">
+                        <span class="stat-value">${stats.totalConnects}</span>
+                        <span class="stat-label">Connections Made</span>
+                    </div>
+                </div>
+
+                <!-- Daily Reflections Stats -->
+                <div class="reflections-stats">
+                    <h2 style="text-align:center; margin-bottom: var(--spacing-sm); font-size: 1.1rem;">Daily Reflections</h2>
+                    ${[
+                { id: App.Config.HABIT_IDS.REF_HAPPY, label: 'Happy' },
+                { id: App.Config.HABIT_IDS.REF_HEALTHY, label: 'Healthy' },
+                { id: App.Config.HABIT_IDS.REF_ACCOMPLISHED, label: 'Accomplished' }
+            ].map(ref => {
+                const counts = stats.reflectionCounts[ref.id];
+                const total = stats.validDays || 1;
+                const getPct = (cnt) => Math.round((cnt / total) * 100);
+
+                return `
+                        <div class="reflection-stat-group" style="margin-bottom: var(--spacing-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--spacing-sm);">
+                            <h3 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 4px;">${ref.label}</h3>
+                            <div style="display:flex; gap:10px; justify-content: space-between;">
+                                <div style="color: var(--status-green); font-size: 0.8rem;">Pos: ${getPct(counts.pos)}%</div>
+                                <div style="color: var(--status-yellow); font-size: 0.8rem;">Neu: ${getPct(counts.neu)}%</div>
+                                <div style="color: var(--status-red); font-size: 0.8rem;">Neg: ${getPct(counts.neg)}%</div>
+                                <div style="color: var(--status-gray); font-size: 0.8rem;">N/A: ${getPct(counts.na)}%</div>
+                            </div>
+                        </div>
+                        `;
+            }).join('')}
                 </div>
 
                 <!-- Book Stats -->
@@ -574,13 +846,14 @@ class UI {
                 <!-- Legend -->
                 <div class="legend">
                     <div class="legend-item"><span class="dot" style="background:var(--status-gold)"></span> 100%</div>
-                    <div class="legend-item"><span class="dot" style="background:var(--status-green)"></span> >70%</div>
-                    <div class="legend-item"><span class="dot" style="background:var(--status-yellow)"></span> >40%</div>
-                    <div class="legend-item"><span class="dot" style="background:var(--status-gray)"></span> >0%</div>
-                    <div class="legend-item"><span class="dot" style="background:var(--status-red)"></span> 0</div>
+                    <div class="legend-item"><span class="dot" style="background:var(--status-green)"></span> Good</div>
+                    <div class="legend-item"><span class="dot" style="background:var(--status-yellow)"></span> OK</div>
+                    <div class="legend-item"><span class="dot" style="background:var(--status-red)"></span> Low</div>
                 </div>
 
-                <div style="text-align:center; margin-top:var(--spacing-lg)">
+                <div style="text-align:center; margin-top:var(--spacing-lg); display:flex; flex-direction:column; gap:10px; align-items:center;">
+
+                    
                     <button type="button" data-action="clear-data" style="background:var(--status-red); color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold; cursor:pointer;">
                         Delete All Data
                     </button>
@@ -594,18 +867,39 @@ class UI {
         let perfectDays = 0;
         let books = [];
         let totalRating = 0;
+        let totalConnects = 0;
+        const reflectionCounts = {
+            [App.Config.HABIT_IDS.REF_HAPPY]: { pos: 0, neu: 0, neg: 0, na: 0 },
+            [App.Config.HABIT_IDS.REF_HEALTHY]: { pos: 0, neu: 0, neg: 0, na: 0 },
+            [App.Config.HABIT_IDS.REF_ACCOMPLISHED]: { pos: 0, neu: 0, neg: 0, na: 0 }
+        };
+        let validDays = 0;
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
 
         Object.keys(allData).forEach(dateStr => {
             if (!dateStr.startsWith(year)) return;
 
             const dayData = allData[dateStr];
 
+            // Stats
+            if (dayData[App.Config.HABIT_IDS.CONNECT]) totalConnects++;
+
+            const targetD = new Date(dateStr + 'T00:00:00');
+            if (targetD <= now) {
+                validDays++;
+                [App.Config.HABIT_IDS.REF_HAPPY, App.Config.HABIT_IDS.REF_HEALTHY, App.Config.HABIT_IDS.REF_ACCOMPLISHED].forEach(id => {
+                    const state = dayData[id] || 'na';
+                    if (reflectionCounts[id][state] !== undefined) reflectionCounts[id][state]++;
+                });
+            }
+
             // Check if day matches filter criteria (if any) or existing logic
             // Note: calculateYearlyStats iterates existing keys, so data exists by definition.
 
             const score = App.Logic.calculateDailyScore(dayData, dateStr);
             const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
-            const maxScore = dayType === 'work' ? 7 : 5;
+            const maxScore = dayType === 'work' ? 10 : 7;
 
             if (score === maxScore) perfectDays++;
 
@@ -624,7 +918,7 @@ class UI {
         // Sort books by date desc
         books.sort((a, b) => b.date.localeCompare(a.date));
 
-        return { perfectDays, books, bookCount: books.length, totalRating };
+        return { perfectDays, books, bookCount: books.length, totalRating, totalConnects, reflectionCounts, validDays };
     }
 
     renderCalendar(year) {
@@ -669,7 +963,7 @@ class UI {
                     const dayData = App.Storage.getDay(dateStr);
                     const score = App.Logic.calculateDailyScore(dayData, dateStr);
                     const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
-                    const maxScore = dayType === 'work' ? 7 : 5;
+                    const maxScore = dayType === 'work' ? 10 : 7;
 
                     totalScore += score;
                     totalMax += maxScore;
@@ -677,7 +971,7 @@ class UI {
                     // No data entered -> 0 score, but it IS a day that passed, so it adds to Max
                     // Default day type logic
                     const isWeekend = App.Logic.isWeekend(dateStr);
-                    const maxScore = isWeekend ? 5 : 7;
+                    const maxScore = isWeekend ? 7 : 10;
                     totalMax += maxScore;
                     // totalScore += 0;
                 }
@@ -689,44 +983,31 @@ class UI {
         const headerText = totalMax > 0 ? `${monthName} (${pct}%)` : monthName;
 
         // Render Grid
-        let daysHtml = '';
-        // Empty slots for start
+        let grid = '';
+        // Empty days
         for (let i = 0; i < startDay; i++) {
-            daysHtml += `<div class="day-cell empty"></div>`;
+            grid += '<div class="day empty"></div>';
         }
-
+        // Actual days
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const dayData = App.Storage.getDay(dateStr);
-            const targetD = new Date(dateStr + 'T00:00:00');
-            const isFuture = targetD > now;
+            const dayData = allData[dateStr] || {};
+            const score = App.Logic.calculateDailyScore(dayData, dateStr);
+            const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
+            const color = App.Logic.getStatusColor(score, dayType);
 
-            if (!isFuture) {
-                const score = App.Logic.calculateDailyScore(dayData, dateStr);
-                const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
-                const maxScore = dayType === 'work' ? 7 : 5;
-                const color = App.Logic.getStatusColor(score, dayType);
-
-                daysHtml += `
-                    <div class="day-cell" onclick="ui.navigateTo('${dateStr}')">
-                        <div class="status-indicator" style="background-color: ${color}; color: ${score === maxScore ? 'black' : 'white'}">
-                            ${d} ${score === maxScore ? '<span class="star">★</span>' : ''}
-                        </div>
-                    </div>`;
-            } else {
-                daysHtml += `<div class="day-cell future">${d}</div>`;
-            }
+            grid += `<div class="day" style="background:${color}" data-date="${dateStr}"></div>`;
         }
 
-        // Use same details/summary style as books
         return `
-            <details class="month-block">
-                <summary>${headerText}</summary>
-                <div class="month-grid" style="margin-top:var(--spacing-md)">
-                    <div class="wday">S</div><div class="wday">M</div><div class="wday">T</div><div class="wday">W</div><div class="wday">T</div><div class="wday">F</div><div class="wday">S</div>
-                    ${daysHtml}
-                </div>
-            </details>
+            <div class="month-block">
+                <details>
+                    <summary>${headerText}</summary>
+                    <div class="month-grid">
+                        ${grid}
+                    </div>
+                </details>
+            </div>
         `;
     }
 
@@ -736,12 +1017,13 @@ class UI {
         this.render();
     }
 
-    renderToggleCard(id, title, icon, isActive, isWeekend) {
+    renderToggleCard(id, title, icon, isActive, isWeekend, readOnly = false) {
         // If weekend, always show as "success" visually, but maybe disabled or indicated auto-complete
         const success = isWeekend || isActive;
+        const actionAttr = readOnly ? '' : `data-action="toggle-habit" data-id="${id}"`;
 
         return `
-            <div class="card habit-toggle ${success ? 'success' : ''}" data-action="toggle-habit" data-id="${id}">
+            <div class="card habit-toggle ${success ? 'success' : ''} ${readOnly ? 'read-only' : ''}" ${actionAttr} style="${readOnly ? 'cursor: default; opacity: 0.9;' : ''}">
                 <div class="icon">${icon}</div>
                 <div class="details">
                     <h3>${title}</h3>
@@ -768,8 +1050,6 @@ class UI {
             </div>
         `;
     }
-
-
 
     formatDate(dateStr) {
         const options = { weekday: 'short', month: 'short', day: 'numeric' };
