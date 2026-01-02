@@ -241,7 +241,14 @@ class UI {
 
             // 2. Find Action Element (Button or Card)
             const actionEl = e.target.closest('[data-action]');
-            if (!actionEl) return;
+            if (!actionEl) {
+                // FALLBACK: Check for calendar day click
+                const dayEl = e.target.closest('.day-cell');
+                if (dayEl && dayEl.dataset.date) {
+                    this.navigateTo(dayEl.dataset.date);
+                }
+                return;
+            }
 
             const action = actionEl.dataset.action;
             const id = actionEl.dataset.id;
@@ -722,7 +729,7 @@ class UI {
                 <div class="reflection-icon" style="background: ${color}; color: ${iconColor}">
                     ${emoji}
                 </div>
-                <div class="reflection-label">${title} ${labelIndicator}</div>
+                <div class="reflection-label" style="text-align:center;">${title}<br/>${labelIndicator}</div>
             </div>
         `;
     }
@@ -753,7 +760,7 @@ class UI {
         let icon = '🔴';
         if (color === 'var(--status-gold)') icon = '⭐';
         else if (color === 'var(--status-green)') icon = '🟢';
-        else if (color === 'var(--status-yellow)') icon = '�';
+        else if (color === 'var(--status-yellow)') icon = '🟡';
 
         return `
             <div class="day-status" style="background: ${color}; color: ${score === maxScore ? 'black' : 'white'}">
@@ -810,7 +817,7 @@ class UI {
                 const getPct = (cnt) => Math.round((cnt / total) * 100);
 
                 return `
-                        <div class="reflection-stat-group" style="margin-bottom: var(--spacing-md); border-bottom: 1px solid var(--border-color); padding-bottom: var(--spacing-sm);">
+                        <div class="reflection-stat-group" style="margin-bottom: var(--spacing-xs); border-bottom: 1px solid var(--border-color); padding-bottom: var(--spacing-sm);">
                             <h3 style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 4px;">${ref.label}</h3>
                             <div style="display:flex; gap:10px; justify-content: space-between;">
                                 <div style="color: var(--status-green); font-size: 0.8rem;">Pos: ${getPct(counts.pos)}%</div>
@@ -822,6 +829,22 @@ class UI {
                         `;
             }).join('')}
                 </div>
+
+                <!-- Connections Stats -->
+                <details style="margin-bottom: var(--spacing-xs);">
+                    <summary>${stats.totalConnects} Connections Recorded</summary>
+                    <div style="padding: var(--spacing-sm) 0;">
+                        <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9rem; line-height: 1.6;">
+                            ${Object.keys(stats.connectionCounts)
+                .sort((a, b) => stats.connectionCounts[b] - stats.connectionCounts[a])
+                .map(name => `
+                                    <li style="border-bottom: 1px solid var(--border-color); padding: 4px 0;">
+                                        ${name} (${stats.connectionCounts[name]})
+                                    </li>
+                                `).join('')}
+                        </ul>
+                    </div>
+                </details>
 
                 <!-- Book Stats -->
                 <details>
@@ -868,6 +891,7 @@ class UI {
         let books = [];
         let totalRating = 0;
         let totalConnects = 0;
+        const connectionCounts = {};
         const reflectionCounts = {
             [App.Config.HABIT_IDS.REF_HAPPY]: { pos: 0, neu: 0, neg: 0, na: 0 },
             [App.Config.HABIT_IDS.REF_HEALTHY]: { pos: 0, neu: 0, neg: 0, na: 0 },
@@ -883,7 +907,13 @@ class UI {
             const dayData = allData[dateStr];
 
             // Stats
-            if (dayData[App.Config.HABIT_IDS.CONNECT]) totalConnects++;
+            const connectionName = dayData[App.Config.HABIT_IDS.CONNECT];
+            if (connectionName) {
+                totalConnects++;
+                if (typeof connectionName === 'string') {
+                    connectionCounts[connectionName] = (connectionCounts[connectionName] || 0) + 1;
+                }
+            }
 
             const targetD = new Date(dateStr + 'T00:00:00');
             if (targetD <= now) {
@@ -918,14 +948,20 @@ class UI {
         // Sort books by date desc
         books.sort((a, b) => b.date.localeCompare(a.date));
 
-        return { perfectDays, books, bookCount: books.length, totalRating, totalConnects, reflectionCounts, validDays };
+        return { perfectDays, books, bookCount: books.length, totalRating, totalConnects, reflectionCounts, validDays, connectionCounts };
     }
 
     renderCalendar(year) {
-        // Render 12 months for year
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
         const months = [];
         for (let m = 0; m < 12; m++) {
-            months.push(this.renderMonth(year, m));
+            // Only show month if it has started
+            if (year < currentYear || (year === currentYear && m <= currentMonth)) {
+                months.push(this.renderMonth(year, m));
+            }
         }
         return `
             <div class="calendar-section">
@@ -986,17 +1022,33 @@ class UI {
         let grid = '';
         // Empty days
         for (let i = 0; i < startDay; i++) {
-            grid += '<div class="day empty"></div>';
+            grid += '<div class="day-cell empty"></div>';
         }
         // Actual days
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const targetD = new Date(dateStr + 'T00:00:00');
+            const isFuture = targetD > now;
+
             const dayData = allData[dateStr] || {};
             const score = App.Logic.calculateDailyScore(dayData, dateStr);
             const dayType = dayData.dayType || (App.Logic.isWeekend(dateStr) ? 'play' : 'work');
-            const color = App.Logic.getStatusColor(score, dayType);
 
-            grid += `<div class="day" style="background:${color}" data-date="${dateStr}"></div>`;
+            let color = App.Logic.getStatusColor(score, dayType);
+            if (isFuture) color = 'var(--status-gray)';
+
+            const isGold = color === 'var(--status-gold)';
+            const isYellow = color === 'var(--status-yellow)';
+            const isGray = color === 'var(--status-gray)';
+            const textColor = (isGold || isYellow || isGray) ? 'black' : 'white';
+
+            grid += `
+                <div class="day-cell" data-date="${dateStr}">
+                    <div class="status-indicator" style="background:${color}; color:${textColor}">
+                        ${d}
+                        ${isGold ? '<span class="star">⭐</span>' : ''}
+                    </div>
+                </div>`;
         }
 
         return `
